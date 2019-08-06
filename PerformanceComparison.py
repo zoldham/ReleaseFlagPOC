@@ -4,6 +4,7 @@ import random
 import requests
 import threading
 import cassandra 
+import numpy as np
 from cassandra.cluster import Cluster 
 from cassandra.auth import PlainTextAuthProvider
 import time
@@ -397,29 +398,79 @@ values = []
 for flag in flags:
     values.append(get_flag_cass(flag, cass_session))
 
-str1 = ""
-# str2 = ""
-# start_time = time.time()
-# for flag in flags:
-#     if (get_flag_flipt_redis_async(flag, flipt_url, redis_local)):
-#         str1 += '1'
-#     else:
-#         str1 += '0'
-# print("--- %s seconds ---" % (time.time() - start_time))
+def multinamer(which):
+    if (which == 0):    # Cassandra
+        return "Cassandra"
+    elif (which == 1):  # Cassandra - redis - sync - local
+        return "Cassandra - redis - sync - local"
+    elif (which == 2):  # Cassandra - redis - sync - remote
+        return "Cassandra - redis - sync - remote"
+    elif (which == 3):  # Cassandra - redis - async - local
+        return "Cassandra - redis - async - local"
+    elif (which == 4):  # Cassandra - redis - async - remote
+        return "Cassandra - redis - async - remote"
+    elif (which == 5):  # Flipt
+        return "Flipt"
+    elif (which == 6):  # Flipt - redis - sync - local
+        return "Flipt - redis - sync - local"
+    elif (which == 7):  # Flipt - redis - sync - remote
+        return "Flipt - redis - sync - remote"
+    elif (which == 8):  # Flipt - redis - async - local
+        return "Flipt - redis - async - local"
+    elif (which == 9):  # Flipt - redis - async - remote
+        return "Flipt - redis - async - remote"
 
-# while (num_threads > 0):
-#     time.sleep(1)
+# Multicaller - for cleaner code
+def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, which):
+    if (which == 0):    # Cassandra
+        return get_flag_cass(flag, cass_instance)
+    elif (which == 1):  # Cassandra - redis - sync - local
+        return get_flag_cass_redis_sync(flag, cass_instance, redis_local)
+    elif (which == 2):  # Cassandra - redis - sync - remote
+        return get_flag_cass_redis_sync(flag, cass_instance, redis_remote)
+    elif (which == 3):  # Cassandra - redis - async - local
+        return get_flag_cass_redis_async(flag, cass_instance, redis_local)
+    elif (which == 4):  # Cassandra - redis - async - remote
+        return get_flag_cass_redis_async(flag, cass_instance, redis_remote)
+    elif (which == 5):  # Flipt
+        return get_flag_flipt(flag, flipt_url)
+    elif (which == 6):  # Flipt - redis - sync - local
+        return get_flag_flipt_redis_sync(flag, flipt_url, redis_local)
+    elif (which == 7):  # Flipt - redis - sync - remote
+        return get_flag_flipt_redis_sync(flag, flipt_url, redis_remote)
+    elif (which == 8):  # Flipt - redis - async - local
+        return get_flag_flipt_redis_async(flag, flipt_url, redis_local)
+    elif (which == 9):  # Flipt - redis - async - remote
+        return get_flag_flipt_redis_async(flag, flipt_url, redis_remote)
 
-# # redis_local.flushdb()
-# # redis_local.flushall()
-# time.sleep(5)
+# Test config
+num_redis_percents = 11
+num_repetitions = 3
 
-# start_time = time.time()
-# for flag in flags:
-#     if (get_flag_flipt_redis_sync(flag, flipt_url, redis_local)):
-#         str2 += '1'
-#     else:
-#         str2 += '0'
-# print("--- %s seconds ---" % (time.time() - start_time))
+# Iterate over various % in redis cache
+for redis_percent in np.linspace(0, 1, num_redis_percents):
 
-# print(str1 == str2)
+    # Iterate over which method/config is used
+    for which in range(0, 10):
+
+        # Setup aggregation
+        total_time = 0.0
+    
+        # Iterate set number of times
+        for i in range(0, num_repetitions):
+            
+            # Setup redis
+            remove_flags_redis(flags, redis_local)
+            remove_flags_redis(flags, redis_remote)
+            add_partial_flags_redis(flags, values, redis_percent, redis_local)
+            add_partial_flags_redis(flags, values, redis_percent, redis_remote)
+
+            # Time the retrievals
+            start_time = time.time()
+            for flag in flags:
+                multicaller(flag, cass_session, flipt_url, redis_local, redis_remote, which)
+            total_time = total_time + time.time() - start_time
+
+        # Done with this method-percent combo
+        avg_time = total_time / num_repetitions
+        print("{} - {}{} hit: {} seconds".format(multinamer(which), redis_percent, "%", avg_time))
