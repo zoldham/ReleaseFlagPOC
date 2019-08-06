@@ -53,16 +53,19 @@ flipt_result = None
 cycle_num = 0
 cycle_num_mutex = threading.Lock()
 
+# Remove given flags from redis cache
 def remove_flags_redis(flags, redis_instance):
     redis_key = "{}-{}-{}-{}"
     for flag in flags:
         redis_instance.delete(redis_key.format(flag[0], flag[1], flag[2], flag[3]))
 
+# Add given percent of given flags to redis cache
 def add_partial_flags_redis(flags, values, rate, redis_instance):
     for flag, value in zip(flags, values):
         if (random.uniform(0, 1) < rate):
             set_flag_redis(flag, value, redis_instance)
 
+# Get the given flag from cassandra
 def get_flag_cass(flag, cass_instance):
 
     # 'Declarations'
@@ -75,6 +78,7 @@ def get_flag_cass(flag, cass_instance):
 
     return value
 
+# Attempt to get the given flag from redis
 def get_flag_redis(flag, redis_instance):
 
     # 'Declarations'
@@ -94,6 +98,7 @@ def get_flag_redis(flag, redis_instance):
 
     return flag
 
+# Get the given flag from flipt
 def get_flag_flipt(flag, flipt_url):
 
     # 'Declarations'
@@ -374,30 +379,7 @@ def get_flag_flipt_redis_sync(flag, flipt_url, redis_instance):
     set_flag_redis(flag, value, redis_instance)
     return value
 
-# Database config and setup
-redis_remote_address = 'K1D-REDIS-CLST.ksg.int'
-redis_remote_password = 'ZECjTH9cx24ukQA'
-redis_local_address = 'localhost'
-cass_address = 'dev-cassandra.ksg.int'
-cass_port = 9042
-cass_username = 'devadmin'
-cass_password = 'Keys2TheK1ngd0m'
-cass_namespace = 'CassandraPractice'
-# Redis instance
-redis_remote = redis.Redis(host=redis_remote_address, password=redis_remote_password)
-redis_local = redis.Redis(host=redis_local_address)
-# Cassandra Connection
-authentication = PlainTextAuthProvider(username=cass_username, password=cass_password)
-cluster = Cluster([cass_address], port=cass_port, auth_provider=authentication)
-cass_session = cluster.connect(cass_namespace)
-# Flipt Connection Info
-flipt_url = 'http://flipt-demo.devops-sandbox.k1d.k8.cin.kore.korewireless.com/api/v1/flags/'
-
-# Get the values for storage
-values = []
-for flag in flags:
-    values.append(get_flag_cass(flag, cass_session))
-
+# Get the function 'names' for the corresponding which in multicaller
 def multinamer(which):
     if (which == 0):    # Cassandra
         return "Cassandra"
@@ -442,6 +424,30 @@ def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, which
         return get_flag_flipt_redis_async(flag, flipt_url, redis_local)
     elif (which == 9):  # Flipt - redis - async - remote
         return get_flag_flipt_redis_async(flag, flipt_url, redis_remote)
+
+# Database config and setup
+redis_remote_address = 'K1D-REDIS-CLST.ksg.int'
+redis_remote_password = 'ZECjTH9cx24ukQA'
+redis_local_address = 'localhost'
+cass_address = 'dev-cassandra.ksg.int'
+cass_port = 9042
+cass_username = 'devadmin'
+cass_password = 'Keys2TheK1ngd0m'
+cass_namespace = 'CassandraPractice'
+# Redis instance
+redis_remote = redis.Redis(host=redis_remote_address, password=redis_remote_password)
+redis_local = redis.Redis(host=redis_local_address)
+# Cassandra Connection
+authentication = PlainTextAuthProvider(username=cass_username, password=cass_password)
+cluster = Cluster([cass_address], port=cass_port, auth_provider=authentication)
+cass_session = cluster.connect(cass_namespace)
+# Flipt Connection Info
+flipt_url = 'http://flipt-demo.devops-sandbox.k1d.k8.cin.kore.korewireless.com/api/v1/flags/'
+
+# Get the values for storage
+values = []
+for flag in flags:
+    values.append(get_flag_cass(flag, cass_session))
 
 # Test config
 num_redis_percents = 11
