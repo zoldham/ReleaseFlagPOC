@@ -451,10 +451,15 @@ for flag in flags:
 
 # Test config
 num_redis_percents = 11
-num_repetitions = 3
+num_repetitions = 7
+output_file = 'output.csv'
+
+data = np.zeros((num_redis_percents, 10))
 
 # Iterate over various % in redis cache
+i = -1
 for redis_percent in np.linspace(0, 1, num_redis_percents):
+    i = i + 1
 
     # Iterate over which method/config is used
     for which in range(0, 10):
@@ -471,6 +476,10 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
             add_partial_flags_redis(flags, values, redis_percent, redis_local)
             add_partial_flags_redis(flags, values, redis_percent, redis_remote)
 
+            # Wait for threads
+            while (num_threads > 0):
+                time.sleep(0.01)
+
             # Time the retrievals
             start_time = time.time()
             for flag in flags:
@@ -479,4 +488,29 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
 
         # Done with this method-percent combo
         avg_time = total_time / num_repetitions
-        print("{} - {}{} hit: {} seconds".format(multinamer(which), redis_percent, "%", avg_time))
+        print("{} - {}{} hit rate: {} seconds".format(multinamer(which), redis_percent * 100, "%", avg_time))
+        data[i][which]
+
+# Format output
+data = np.transpose(data)
+output = []
+
+# Header
+header = "Redis Hit Rate: "
+for percent in np.linspace(0, 1, num_redis_percents):
+    header = header + ',' + str(percent)
+header = header + '\n'
+output.append(header)
+
+# Data rows
+for which in range(0, 10):
+    line = multinamer(which)
+    for i in range(0, num_redis_percents):
+        line = line + ',' + str(data[which][i])
+    line = line + '\n'
+    output.append(line)
+
+# Output to file
+with open(output_file, "w") as file:
+    for line in output:
+        file.write(line)
