@@ -54,24 +54,30 @@ cass_result = None
 flipt_result = None
 cycle_num = 0
 cycle_num_mutex = threading.Lock()
+result_ready_event = threading.Event()
 
 # Remove given flags from redis cache
 def remove_flags_redis(flags, redis_instance):
     redis_key = "{}-{}-{}-{}"
-    for flag in flags:
-        redis_instance.delete(redis_key.format(flag[0], flag[1], flag[2], flag[3]))
+    with redis_instance.pipeline() as pipe:
+        for flag in flags:
+            pipe.delete(redis_key.format(flag[0], flag[1], flag[2], flag[3]))
+        pipe.execute()
 
 # Add given percent of given flags to redis cache
 def add_partial_flags_redis(flags, values, rate, redis_instance):
-    for flag, value in zip(flags, values):
-        if (random.uniform(0, 1) < rate):
-            set_flag_redis(flag, value, redis_instance)
+    with redis_instance.pipeline() as pipe:
+        for flag, value in zip(flags, values):
+            if (random.uniform(0, 1) < rate):
+                set_flag_redis(flag, value, pipe)
+        pipe.execute()
 
 # Remove given flags from dictionary
 def remove_flags_dictionary(flags, dictionary):
     key = "{}-{}-{}-{}"
     for flag in flags:
-        dictionary.pop(key.format(flag[0], flag[1], flag[2], flag[3]))
+        if (key.format(flag[0], flag[1], flag[2], flag[3]) in dictionary):
+            dictionary.pop(key.format(flag[0], flag[1], flag[2], flag[3]))
 
 # Add given percent of given flags to dictionary
 def add_partial_flags_dictionary(flags, values, rate, dictionary):
@@ -81,11 +87,6 @@ def add_partial_flags_dictionary(flags, values, rate, dictionary):
 
 # Get the given flag from cassandra
 def get_flag_cass(flag, cass_instance):
-
-    # 'Declarations'
-    global cass_result 
-    global cass_done
-
     cass_select = "SELECT \"Value\" FROM \"Flags\" WHERE \"Environment\" = '{}' AND \"Request Category\" = '{}' AND \"Service Type ID\" = {} AND \"WFE\" = {};"
     results = cass_instance.execute(cass_select.format(flag[0], flag[1], flag[2], flag[3]))
     value = results[0][0]
@@ -94,11 +95,6 @@ def get_flag_cass(flag, cass_instance):
 
 # Attempt to get the given flag from redis
 def get_flag_redis(flag, redis_instance):
-
-    # 'Declarations'
-    global redis_result
-    global redis_done
-
     redis_key = "{}-{}-{}-{}"
     value = redis_instance.get(redis_key.format(flag[0], flag[1], flag[2], flag[3]))
 
@@ -114,11 +110,6 @@ def get_flag_redis(flag, redis_instance):
 
 # Get the given flag from flipt
 def get_flag_flipt(flag, flipt_url):
-
-    # 'Declarations'
-    global flipt_result
-    global flipt_done
-
     flag_name = "{}-{}-{}-{}".format(flag[0], flag[1], flag[2], flag[3]).lower()
     query_url = flipt_url + flag_name
     response = requests.get(url = query_url)
@@ -163,6 +154,7 @@ def get_flag_cass_threaded(flag, cass_instance, start_cycle):
     global num_threads_mutex
     global cycle_num
     global cycle_num_mutex
+    global result_ready_event
 
     num_threads_mutex.acquire()
     num_threads = num_threads + 1
@@ -177,6 +169,7 @@ def get_flag_cass_threaded(flag, cass_instance, start_cycle):
         if (cycle_num == start_cycle):
             cass_result = value
             cass_done = True
+            result_ready_event.set()
         cycle_num_mutex.release()
     finally:
         num_threads_mutex.acquire()
@@ -193,6 +186,7 @@ def get_flag_redis_threaded(flag, redis_instance, start_cycle):
     global num_threads_mutex
     global cycle_num
     global cycle_num_mutex
+    global result_ready_event
 
     num_threads_mutex.acquire()
     num_threads = num_threads + 1
@@ -214,6 +208,7 @@ def get_flag_redis_threaded(flag, redis_instance, start_cycle):
         if (cycle_num == start_cycle):
             redis_result = result
             redis_done = True
+            result_ready_event.set()
         cycle_num_mutex.release()
     finally:
         num_threads_mutex.acquire()
@@ -245,6 +240,7 @@ def get_flag_flipt_threaded(flag, flipt_url, start_cycle):
         if (cycle_num == start_cycle):
             flipt_result = value
             flipt_done = True
+            result_ready_event.set()
         cycle_num_mutex.release()
     finally:
         num_threads_mutex.acquire()
@@ -269,6 +265,7 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
 
     # Wait for number of threads to become low enough to start
     while (not start_async()):
+        print('oh no')
         time.sleep(0.001)
     
     # 'Declarations'
@@ -278,6 +275,7 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
     global cass_result
     global cycle_num
     global cycle_num_mutex
+    global result_ready_event
     value = None
     
     # Reset async global vars
@@ -285,6 +283,7 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
     cass_done = False
     redis_result = None
     cass_result = None
+    result_ready_event.clear()
 
     # Start threads
     cycle_num_mutex.acquire()
@@ -296,6 +295,10 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
     redis_thread.start()
     cass_thread.start()
     while (True):
+
+        # Wait on the event... IDK if it has spurious wakeups so assume it does
+        result_ready_event.wait()
+        result_ready_event.clear()
 
         # Check redis thread
         if (redis_done):
@@ -315,8 +318,6 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
             set_flag_redis(flag, value, redis_instance)
             #print('Cass')
             break
-
-        time.sleep(0.001)
 
     cycle_num_mutex.acquire()
     cycle_num = cycle_num + 1
@@ -354,6 +355,7 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
 
     # Wait for number of threads to become low enough to start
     while (not start_async()):
+        print('oh no')
         time.sleep(0.001)
     
     # 'Declarations'
@@ -363,6 +365,7 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
     global flipt_result
     global cycle_num
     global cycle_num_mutex
+    global result_ready_event
     value = None
     
     # Reset async global vars
@@ -370,6 +373,7 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
     redis_done = False
     flipt_result = None
     redis_result = None
+    result_ready_event.clear()
 
     # Start threads
     cycle_num_mutex.acquire()
@@ -381,6 +385,10 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
     redis_thread.start()
     flipt_thread.start()
     while (True):
+
+        # IDK if there are spurious wakeups, assume there are
+        result_ready_event.wait()
+        result_ready_event.clear()
 
         # Check redis thread
         if (redis_done):
@@ -400,8 +408,6 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
             set_flag_redis(flag, value, redis_instance)
             #print('Flipt')
             break
-        
-        time.sleep(0.001)
 
     cycle_num_mutex.acquire()
     cycle_num = cycle_num + 1
@@ -534,7 +540,7 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
         total_time = 0.0
     
         # Iterate set number of times
-        for i in range(0, num_repetitions):
+        for j in range(0, num_repetitions):
             
             # Setup redis / dictionary
             remove_flags_redis(flags, redis_local)
@@ -546,7 +552,7 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
 
             # Wait for threads
             while (num_threads > 0):
-                time.sleep(0.01)
+                time.sleep(1)
 
             # Time the retrievals
             start_time = time.time()
