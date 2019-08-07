@@ -3,11 +3,13 @@ import redis
 import random
 import requests
 import threading
-import cassandra 
+import time
 import numpy as np
+import sys
+import cassandra 
 from cassandra.cluster import Cluster 
 from cassandra.auth import PlainTextAuthProvider
-import time
+
 
 # Constants
 ENVIRONMENTS = ['DEV', 'QA', 'PROD']
@@ -65,6 +67,18 @@ def add_partial_flags_redis(flags, values, rate, redis_instance):
         if (random.uniform(0, 1) < rate):
             set_flag_redis(flag, value, redis_instance)
 
+# Remove given flags from dictionary
+def remove_flags_dictionary(flags, dictionary):
+    key = "{}-{}-{}-{}"
+    for flag in flags:
+        dictionary.pop(key.format(flag[0], flag[1], flag[2], flag[3]))
+
+# Add given percent of given flags to dictionary
+def add_partial_flags_dictionary(flags, values, rate, dictionary):
+    for flag, value in zip(flags, values):
+        if (random.uniform(0, 1) < rate):
+            set_flag_dictionary(flag, value, dictionary)
+
 # Get the given flag from cassandra
 def get_flag_cass(flag, cass_instance):
 
@@ -111,6 +125,14 @@ def get_flag_flipt(flag, flipt_url):
     value = ('enabled' in response.json())
 
     return  value
+
+# Attempt to get the given flag from the dictionary
+def get_flag_dictionary(flag, dictionary):
+    key = "{}-{}-{}-{}".format(flag[0], flag[1], flag[2], flag[3])
+    if (key in dictionary):
+        return dictionary[key]
+    else:
+        return None
 
 # Determine if we should start an async op, or wait
 def start_async():
@@ -237,6 +259,11 @@ def set_flag_redis(flag, value, redis_instance):
         value_str = "1"
     redis_instance.set(redis_key.format(flag[0], flag[1], flag[2], flag[3]), value_str)
 
+# Create the key-value pair flag-value in the specified dictionary
+def set_flag_dictionary(flag, value, dictionary):
+    key = "{}-{}-{}-{}".format(flag[0], flag[1], flag[2], flag[3])
+    dictionary[key] = value
+
 # Get flag from redis if possible, cassandra if not. Requests made asyncronously. NOT THREAD SAFE.
 def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
 
@@ -298,6 +325,7 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
 
 # Get flag from redis if possible, cassandra if not. Requests made syncronously.
 def get_flag_cass_redis_sync(flag, cass_instance, redis_instance):
+
     # Check redis instnace first
     value = get_flag_redis(flag, redis_instance)
     if (value is not None):
@@ -306,6 +334,19 @@ def get_flag_cass_redis_sync(flag, cass_instance, redis_instance):
     # Now get it from cassandra and put it in redis
     value = get_flag_cass(flag, cass_instance)
     set_flag_redis(flag, value, redis_instance)
+    return value
+
+# Get flag from dictionary if possible, cassadnra if not.
+def get_flag_cass_dictionary(flag, cass_instance, dictionary):
+
+    # Check dictionary first
+    value = get_flag_dictionary(flag, dictionary)
+    if (value is not None):
+        return value
+
+    # Now get it from cassandra and put it in dictionary
+    value = get_flag_cass(flag, cass_instance)
+    set_flag_dictionary(flag, value, dictionary)
     return value
 
 # Get flag from redis if possible, flipt if not. Requests made asyncronously NOT THREAD SAFE.
@@ -369,14 +410,28 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
 
 # Get flag from redis if possible, flipt if not. Requests made syncronously.
 def get_flag_flipt_redis_sync(flag, flipt_url, redis_instance):
+
     # Check redis instance first
     value = get_flag_redis(flag, redis_instance)
     if (value is not None):
         return value
 
-    # Now get it from cassandra and put it in redis
+    # Now get it from flipt and put it in redis
     value = get_flag_flipt(flag, flipt_url)
     set_flag_redis(flag, value, redis_instance)
+    return value
+
+# Get flag from dictionary if possible, flipt if not.
+def get_flag_flipt_dictionary(flag, flipt_url, dictionary):
+    
+    # Check dictionary first
+    value = get_flag_dictionary(flag, dictionary)
+    if (value is not None):
+        return value
+
+    # Now get it from flipt and put it in the dictionary
+    value = get_flag_flipt(flag, flipt_url)
+    set_flag_dictionary(flag, value, dictionary)
     return value
 
 # Get the function 'names' for the corresponding which in multicaller
@@ -391,19 +446,23 @@ def multinamer(which):
         return "Cassandra - redis - async - local"
     elif (which == 4):  # Cassandra - redis - async - remote
         return "Cassandra - redis - async - remote"
-    elif (which == 5):  # Flipt
+    elif (which == 5):  # Cassandra - dictionary
+        return "Cassandra - dictionary"
+    elif (which == 6):  # Flipt
         return "Flipt"
-    elif (which == 6):  # Flipt - redis - sync - local
+    elif (which == 7):  # Flipt - redis - sync - local
         return "Flipt - redis - sync - local"
-    elif (which == 7):  # Flipt - redis - sync - remote
+    elif (which == 8):  # Flipt - redis - sync - remote
         return "Flipt - redis - sync - remote"
-    elif (which == 8):  # Flipt - redis - async - local
+    elif (which == 9):  # Flipt - redis - async - local
         return "Flipt - redis - async - local"
-    elif (which == 9):  # Flipt - redis - async - remote
+    elif (which == 10): # Flipt - redis - async - remote
         return "Flipt - redis - async - remote"
+    elif (which == 11): # Flipt - dictionary
+        return "Flipt - dictionary"
 
 # Multicaller - for cleaner code
-def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, which):
+def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, dictionary, which):
     if (which == 0):    # Cassandra
         return get_flag_cass(flag, cass_instance)
     elif (which == 1):  # Cassandra - redis - sync - local
@@ -414,16 +473,20 @@ def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, which
         return get_flag_cass_redis_async(flag, cass_instance, redis_local)
     elif (which == 4):  # Cassandra - redis - async - remote
         return get_flag_cass_redis_async(flag, cass_instance, redis_remote)
-    elif (which == 5):  # Flipt
+    elif (which == 5):  # Cassandra - dictionary
+        return get_flag_cass_dictionary(flag, cass_instance, dictionary)
+    elif (which == 6):  # Flipt
         return get_flag_flipt(flag, flipt_url)
-    elif (which == 6):  # Flipt - redis - sync - local
+    elif (which == 7):  # Flipt - redis - sync - local
         return get_flag_flipt_redis_sync(flag, flipt_url, redis_local)
-    elif (which == 7):  # Flipt - redis - sync - remote
+    elif (which == 8):  # Flipt - redis - sync - remote
         return get_flag_flipt_redis_sync(flag, flipt_url, redis_remote)
-    elif (which == 8):  # Flipt - redis - async - local
+    elif (which == 9):  # Flipt - redis - async - local
         return get_flag_flipt_redis_async(flag, flipt_url, redis_local)
-    elif (which == 9):  # Flipt - redis - async - remote
+    elif (which == 10): # Flipt - redis - async - remote
         return get_flag_flipt_redis_async(flag, flipt_url, redis_remote)
+    elif (which == 11): # Flipt - dictionary
+        return get_flag_flipt_dictionary(flag, flipt_url, dictionary)
 
 # Database config and setup
 redis_remote_address = 'K1D-REDIS-CLST.ksg.int'
@@ -443,6 +506,8 @@ cluster = Cluster([cass_address], port=cass_port, auth_provider=authentication)
 cass_session = cluster.connect(cass_namespace)
 # Flipt Connection Info
 flipt_url = 'http://flipt-demo.devops-sandbox.k1d.k8.cin.kore.korewireless.com/api/v1/flags/'
+# Dictionary declaration
+dictionary = {}
 
 # Get the values for storage
 values = []
@@ -451,10 +516,11 @@ for flag in flags:
 
 # Test config
 num_redis_percents = 11
-num_repetitions = 7
+num_repetitions = 1
 output_file = 'output.csv'
+num_approaches = 12
 
-data = np.zeros((num_redis_percents, 10))
+data = np.zeros((num_redis_percents, num_approaches))
 
 # Iterate over various % in redis cache
 i = -1
@@ -462,7 +528,7 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
     i = i + 1
 
     # Iterate over which method/config is used
-    for which in range(0, 10):
+    for which in range(0, num_approaches):
 
         # Setup aggregation
         total_time = 0.0
@@ -470,11 +536,13 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
         # Iterate set number of times
         for i in range(0, num_repetitions):
             
-            # Setup redis
+            # Setup redis / dictionary
             remove_flags_redis(flags, redis_local)
             remove_flags_redis(flags, redis_remote)
+            remove_flags_dictionary(flags, dictionary)
             add_partial_flags_redis(flags, values, redis_percent, redis_local)
             add_partial_flags_redis(flags, values, redis_percent, redis_remote)
+            add_partial_flags_dictionary(flags, values, redis_percent, dictionary)
 
             # Wait for threads
             while (num_threads > 0):
@@ -483,13 +551,13 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
             # Time the retrievals
             start_time = time.time()
             for flag in flags:
-                multicaller(flag, cass_session, flipt_url, redis_local, redis_remote, which)
+                multicaller(flag, cass_session, flipt_url, redis_local, redis_remote, dictionary, which)
             total_time = total_time + time.time() - start_time
 
         # Done with this method-percent combo
         avg_time = total_time / num_repetitions
         print("{} - {}{} hit rate: {} seconds".format(multinamer(which), redis_percent * 100, "%", avg_time))
-        data[i][which]
+        data[i][which] = avg_time
 
 # Format output
 data = np.transpose(data)
@@ -503,14 +571,30 @@ header = header + '\n'
 output.append(header)
 
 # Data rows
-for which in range(0, 10):
+for which in range(0, num_approaches):
     line = multinamer(which)
     for i in range(0, num_redis_percents):
         line = line + ',' + str(data[which][i])
     line = line + '\n'
     output.append(line)
 
+# Determine 'winner' for each hit percentage
+bests = []
+for j in range(0, num_redis_percents):
+    best = 0
+    for i in range(0, num_approaches):
+        if (data[i][j] < data[best][j]):
+            best = i
+    bests.append(multinamer(best))
+
+# 'Best' row
+line = 'best:'
+for i in range(0, num_redis_percents):
+    line = line + ',' + bests[i]
+output.append(line)
+
 # Output to file
 with open(output_file, "w") as file:
     for line in output:
         file.write(line)
+
