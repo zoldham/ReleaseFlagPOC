@@ -573,10 +573,10 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
                     # Setup redis / dictionary
                     remove_flags_redis(flags, redis_local)
                     remove_flags_redis(flags, redis_remote)
-                    remove_flags_dictionary(flags, dictionary)
+                    # remove_flags_dictionary(flags, dictionary)
                     add_partial_flags_redis(flags, values, redis_percent, redis_local)
                     add_partial_flags_redis(flags, values, redis_percent, redis_remote)
-                    add_partial_flags_dictionary(flags, values, redis_percent, dictionary)
+                    # add_partial_flags_dictionary(flags, values, redis_percent, dictionary)
 
                     # Wait for threads
                     while (num_threads > 0):
