@@ -33,6 +33,7 @@ REQUEST_CATEGORIES = ['Activation',
     'Bar Service',
     'Unbar Service']
 SERVICE_TYPE_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+LOG_FILE = 'log.txt'
 
 # Create flag strings
 flags = []
@@ -55,6 +56,11 @@ flipt_result = None
 cycle_num = 0
 cycle_num_mutex = threading.Lock()
 result_ready_event = threading.Event()
+
+def do_logging(line):
+    print(line)
+    with open(LOG_FILE, 'a') as file:
+        file.write('{}'.format(line) + '\n')
 
 # Remove given flags from redis cache
 def remove_flags_redis(flags, redis_instance):
@@ -546,7 +552,7 @@ def refresh_connections():
 
             success = True 
         except Exception as e:
-            print('Exception during refresh: {}'.format(e))
+            do_logging('Exception during refresh: {}'.format(e))
 
 # Database instanciation
 refresh_connections()
@@ -600,12 +606,12 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
                     total_time = total_time + time.time() - start_time
                     success = True
                 except Exception as e:
-                    print('Exception during execution: {}'.format(e))
+                    do_logging('Exception during execution: {}'.format(e))
                     refresh_connections()
 
         # Done with this method-percent combo
         avg_time = total_time / num_repetitions
-        print("{} - {}{} hit rate: {} seconds".format(multinamer(which), redis_percent * 100, "%", avg_time))
+        do_logging("{} - {}{} hit rate: {} seconds".format(multinamer(which), redis_percent * 100, "%", avg_time))
         data[i][which] = avg_time
 
 # Format output
