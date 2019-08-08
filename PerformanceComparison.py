@@ -494,7 +494,7 @@ def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, dicti
     # elif (which == 11): # Flipt - dictionary
     #     return get_flag_flipt_dictionary(flag, flipt_url, dictionary)
 
-# Database config and setup
+# Database config
 redis_remote_address = 'K1D-REDIS-CLST.ksg.int'
 redis_remote_password = 'ZECjTH9cx24ukQA'
 redis_local_address = 'localhost'
@@ -504,17 +504,18 @@ cass_username = 'devadmin'
 cass_password = 'Keys2TheK1ngd0m'
 cass_namespace = 'CassandraPractice'
 # Redis instance
-redis_remote = redis.Redis(host=redis_remote_address, password=redis_remote_password)
-redis_local = redis.Redis(host=redis_local_address)
+redis_remote = None
+redis_local = None
 # Cassandra Connection
-authentication = PlainTextAuthProvider(username=cass_username, password=cass_password)
-cluster = Cluster([cass_address], port=cass_port, auth_provider=authentication)
-cass_session = cluster.connect(cass_namespace)
+authentication = None
+cluster = None
+cass_session = None
 # Flipt Connection Info
 flipt_url = 'http://flipt-demo.devops-sandbox.k1d.k8.cin.kore.korewireless.com/api/v1/flags/'
 # Dictionary declaration
 dictionary = {}
 
+# Refresh redis and cassandra connections
 def refresh_connections():
 
     # 'Declarations'
@@ -531,14 +532,24 @@ def refresh_connections():
     global cluster 
     global cass_session
 
-    # Redis instance
-    redis_remote = redis.Redis(host=redis_remote_address, password=redis_remote_password)
-    redis_local = redis.Redis(host=redis_local_address)
+    success = False
+    while (not success):
+        try:
+            # Redis instance
+            redis_remote = redis.Redis(host=redis_remote_address, password=redis_remote_password)
+            redis_local = redis.Redis(host=redis_local_address)
 
-    # Cassandra connection
-    authentication = PlainTextAuthProvider(username=cass_username, password=cass_password)
-    cluster = Cluster([cass_address], port=cass_port, auth_provider=authentication)
-    cass_session = cluster.connect(cass_namespace)
+            # Cassandra connection
+            authentication = PlainTextAuthProvider(username=cass_username, password=cass_password)
+            cluster = Cluster([cass_address], port=cass_port, auth_provider=authentication)
+            cass_session = cluster.connect(cass_namespace)
+
+            success = True 
+        except Exception as e:
+            print('Exception during refresh: {}'.format(e))
+
+# Database instanciation
+refresh_connections()
 
 # Get the values for storage
 values = []
@@ -589,7 +600,7 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
                     total_time = total_time + time.time() - start_time
                     success = True
                 except Exception as e:
-                    print('Exception: {}'.format(e))
+                    print('Exception during execution: {}'.format(e))
                     refresh_connections()
 
         # Done with this method-percent combo
