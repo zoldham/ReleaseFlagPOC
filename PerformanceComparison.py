@@ -452,20 +452,20 @@ def multinamer(which):
         return "Cassandra - redis - async - local"
     elif (which == 4):  # Cassandra - redis - async - remote
         return "Cassandra - redis - async - remote"
-    elif (which == 5):  # Cassandra - dictionary
-        return "Cassandra - dictionary"
-    elif (which == 6):  # Flipt
+    # elif (which == 5):  # Cassandra - dictionary
+    #     return "Cassandra - dictionary"
+    elif (which == 5):  # Flipt
         return "Flipt"
-    elif (which == 7):  # Flipt - redis - sync - local
+    elif (which == 6):  # Flipt - redis - sync - local
         return "Flipt - redis - sync - local"
-    elif (which == 8):  # Flipt - redis - sync - remote
+    elif (which == 7):  # Flipt - redis - sync - remote
         return "Flipt - redis - sync - remote"
-    elif (which == 9):  # Flipt - redis - async - local
+    elif (which == 8):  # Flipt - redis - async - local
         return "Flipt - redis - async - local"
-    elif (which == 10): # Flipt - redis - async - remote
+    elif (which == 9): # Flipt - redis - async - remote
         return "Flipt - redis - async - remote"
-    elif (which == 11): # Flipt - dictionary
-        return "Flipt - dictionary"
+    # elif (which == 11): # Flipt - dictionary
+    #     return "Flipt - dictionary"
 
 # Multicaller - for cleaner code
 def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, dictionary, which):
@@ -479,20 +479,20 @@ def multicaller(flag, cass_instance, flipt_url, redis_local, redis_remote, dicti
         return get_flag_cass_redis_async(flag, cass_instance, redis_local)
     elif (which == 4):  # Cassandra - redis - async - remote
         return get_flag_cass_redis_async(flag, cass_instance, redis_remote)
-    elif (which == 5):  # Cassandra - dictionary
-        return get_flag_cass_dictionary(flag, cass_instance, dictionary)
-    elif (which == 6):  # Flipt
+    # elif (which == 5):  # Cassandra - dictionary
+    #     return get_flag_cass_dictionary(flag, cass_instance, dictionary)
+    elif (which == 5):  # Flipt
         return get_flag_flipt(flag, flipt_url)
-    elif (which == 7):  # Flipt - redis - sync - local
+    elif (which == 6):  # Flipt - redis - sync - local
         return get_flag_flipt_redis_sync(flag, flipt_url, redis_local)
-    elif (which == 8):  # Flipt - redis - sync - remote
+    elif (which == 7):  # Flipt - redis - sync - remote
         return get_flag_flipt_redis_sync(flag, flipt_url, redis_remote)
-    elif (which == 9):  # Flipt - redis - async - local
+    elif (which == 8):  # Flipt - redis - async - local
         return get_flag_flipt_redis_async(flag, flipt_url, redis_local)
-    elif (which == 10): # Flipt - redis - async - remote
+    elif (which == 9): # Flipt - redis - async - remote
         return get_flag_flipt_redis_async(flag, flipt_url, redis_remote)
-    elif (which == 11): # Flipt - dictionary
-        return get_flag_flipt_dictionary(flag, flipt_url, dictionary)
+    # elif (which == 11): # Flipt - dictionary
+    #     return get_flag_flipt_dictionary(flag, flipt_url, dictionary)
 
 # Database config and setup
 redis_remote_address = 'K1D-REDIS-CLST.ksg.int'
@@ -515,6 +515,31 @@ flipt_url = 'http://flipt-demo.devops-sandbox.k1d.k8.cin.kore.korewireless.com/a
 # Dictionary declaration
 dictionary = {}
 
+def refresh_connections():
+
+    # 'Declarations'
+    global redis_remote_address
+    global redis_remote_password
+    global redis_local_address
+    global cass_port
+    global cass_username
+    global cass_password
+    global cass_namespace
+    global redis_remote
+    global redis_local
+    global authentication
+    global cluster 
+    global cass_session
+
+    # Redis instance
+    redis_remote = redis.Redis(host=redis_remote_address, password=redis_remote_password)
+    redis_local = redis.Redis(host=redis_local_address)
+
+    # Cassandra connection
+    authentication = PlainTextAuthProvider(username=cass_username, password=cass_password)
+    cluster = Cluster([cass_address], port=cass_port, auth_provider=authentication)
+    cass_session = cluster.connect(cass_namespace)
+
 # Get the values for storage
 values = []
 for flag in flags:
@@ -522,9 +547,9 @@ for flag in flags:
 
 # Test config
 num_redis_percents = 11
-num_repetitions = 1
+num_repetitions = 5
 output_file = 'output.csv'
-num_approaches = 12
+num_approaches = 10
 
 data = np.zeros((num_redis_percents, num_approaches))
 
@@ -541,24 +566,31 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
     
         # Iterate set number of times
         for j in range(0, num_repetitions):
-            
-            # Setup redis / dictionary
-            remove_flags_redis(flags, redis_local)
-            remove_flags_redis(flags, redis_remote)
-            remove_flags_dictionary(flags, dictionary)
-            add_partial_flags_redis(flags, values, redis_percent, redis_local)
-            add_partial_flags_redis(flags, values, redis_percent, redis_remote)
-            add_partial_flags_dictionary(flags, values, redis_percent, dictionary)
 
-            # Wait for threads
-            while (num_threads > 0):
-                time.sleep(1)
+            success = False
+            while (not success):
+                try:
+                    # Setup redis / dictionary
+                    remove_flags_redis(flags, redis_local)
+                    remove_flags_redis(flags, redis_remote)
+                    remove_flags_dictionary(flags, dictionary)
+                    add_partial_flags_redis(flags, values, redis_percent, redis_local)
+                    add_partial_flags_redis(flags, values, redis_percent, redis_remote)
+                    add_partial_flags_dictionary(flags, values, redis_percent, dictionary)
 
-            # Time the retrievals
-            start_time = time.time()
-            for flag in flags:
-                multicaller(flag, cass_session, flipt_url, redis_local, redis_remote, dictionary, which)
-            total_time = total_time + time.time() - start_time
+                    # Wait for threads
+                    while (num_threads > 0):
+                        time.sleep(1)
+
+                    # Time the retrievals
+                    start_time = time.time()
+                    for flag in flags:
+                        multicaller(flag, cass_session, flipt_url, redis_local, redis_remote, dictionary, which)
+                    total_time = total_time + time.time() - start_time
+                    success = True
+                except Exception as e:
+                    print('Exception: {}'.format(e))
+                    refresh_connections()
 
         # Done with this method-percent combo
         avg_time = total_time / num_repetitions
