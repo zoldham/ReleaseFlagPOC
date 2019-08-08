@@ -53,6 +53,7 @@ flipt_done = False
 redis_result = None
 cass_result = None
 flipt_result = None
+threaded_exception = False
 cycle_num = 0
 cycle_num_mutex = threading.Lock()
 result_ready_event = threading.Event()
@@ -161,6 +162,7 @@ def get_flag_cass_threaded(flag, cass_instance, start_cycle):
     global cycle_num
     global cycle_num_mutex
     global result_ready_event
+    global threaded_exception
 
     num_threads_mutex.acquire()
     num_threads = num_threads + 1
@@ -175,6 +177,13 @@ def get_flag_cass_threaded(flag, cass_instance, start_cycle):
         if (cycle_num == start_cycle):
             cass_result = value
             cass_done = True
+            result_ready_event.set()
+        cycle_num_mutex.release()
+    except:
+        cycle_num_mutex.acquire()
+        if (cycle_num == start_cycle):
+            threaded_exception = True
+            do_logging('A thread experienced an exception')
             result_ready_event.set()
         cycle_num_mutex.release()
     finally:
@@ -193,6 +202,7 @@ def get_flag_redis_threaded(flag, redis_instance, start_cycle):
     global cycle_num
     global cycle_num_mutex
     global result_ready_event
+    global threaded_exception
 
     num_threads_mutex.acquire()
     num_threads = num_threads + 1
@@ -216,6 +226,13 @@ def get_flag_redis_threaded(flag, redis_instance, start_cycle):
             redis_done = True
             result_ready_event.set()
         cycle_num_mutex.release()
+    except:
+        cycle_num_mutex.acquire()
+        if (cycle_num == start_cycle):
+            threaded_exception = True
+            do_logging('A thread experienced an exception')
+            result_ready_event.set()
+        cycle_num_mutex.release()
     finally:
         num_threads_mutex.acquire()
         num_threads = num_threads - 1
@@ -231,6 +248,7 @@ def get_flag_flipt_threaded(flag, flipt_url, start_cycle):
     global num_threads_mutex
     global cycle_num
     global cycle_num_mutex
+    global threaded_exception
 
     num_threads_mutex.acquire()
     num_threads = num_threads + 1
@@ -246,6 +264,13 @@ def get_flag_flipt_threaded(flag, flipt_url, start_cycle):
         if (cycle_num == start_cycle):
             flipt_result = value
             flipt_done = True
+            result_ready_event.set()
+        cycle_num_mutex.release()
+    except:
+        cycle_num_mutex.acquire()
+        if (cycle_num == start_cycle):
+            threaded_exception = True
+            do_logging('A thread experienced an exception')
             result_ready_event.set()
         cycle_num_mutex.release()
     finally:
@@ -282,6 +307,7 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
     global cycle_num
     global cycle_num_mutex
     global result_ready_event
+    global threaded_exception
     value = None
     
     # Reset async global vars
@@ -289,6 +315,7 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
     cass_done = False
     redis_result = None
     cass_result = None
+    threaded_exception = False
     result_ready_event.clear()
 
     # Start threads
@@ -305,6 +332,10 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
         # Wait on the event... IDK if it has spurious wakeups so assume it does
         result_ready_event.wait()
         result_ready_event.clear()
+
+        # Check if an exception occurred
+        if (threaded_exception):
+            raise RuntimeError
 
         # Check redis thread
         if (redis_done):
@@ -372,6 +403,7 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
     global cycle_num
     global cycle_num_mutex
     global result_ready_event
+    global threaded_exception
     value = None
     
     # Reset async global vars
@@ -379,6 +411,7 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
     redis_done = False
     flipt_result = None
     redis_result = None
+    threaded_exception = False
     result_ready_event.clear()
 
     # Start threads
@@ -395,6 +428,10 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
         # IDK if there are spurious wakeups, assume there are
         result_ready_event.wait()
         result_ready_event.clear()
+
+        # Check if an exception occurred
+        if (threaded_exception):
+            raise RuntimeError
 
         # Check redis thread
         if (redis_done):
