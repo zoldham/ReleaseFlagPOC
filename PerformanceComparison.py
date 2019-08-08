@@ -179,11 +179,11 @@ def get_flag_cass_threaded(flag, cass_instance, start_cycle):
             cass_done = True
             result_ready_event.set()
         cycle_num_mutex.release()
-    except:
+    except Exception as e:
         cycle_num_mutex.acquire()
         if (cycle_num == start_cycle):
             threaded_exception = True
-            do_logging('A thread experienced an exception')
+            do_logging('A thread experienced an exception: {}'.format(e))
             result_ready_event.set()
         cycle_num_mutex.release()
     finally:
@@ -226,11 +226,11 @@ def get_flag_redis_threaded(flag, redis_instance, start_cycle):
             redis_done = True
             result_ready_event.set()
         cycle_num_mutex.release()
-    except:
+    except Exception as e:
         cycle_num_mutex.acquire()
         if (cycle_num == start_cycle):
             threaded_exception = True
-            do_logging('A thread experienced an exception')
+            do_logging('A thread experienced an exception: {}'.format(e))
             result_ready_event.set()
         cycle_num_mutex.release()
     finally:
@@ -266,11 +266,11 @@ def get_flag_flipt_threaded(flag, flipt_url, start_cycle):
             flipt_done = True
             result_ready_event.set()
         cycle_num_mutex.release()
-    except:
+    except Exception as e:
         cycle_num_mutex.acquire()
         if (cycle_num == start_cycle):
             threaded_exception = True
-            do_logging('A thread experienced an exception')
+            do_logging('A thread experienced an exception: {}'.format(e))
             result_ready_event.set()
         cycle_num_mutex.release()
     finally:
@@ -335,6 +335,7 @@ def get_flag_cass_redis_async(flag, cass_instance, redis_instance):
 
         # Check if an exception occurred
         if (threaded_exception):
+            do_logging("threaded exception")
             raise RuntimeError
 
         # Check redis thread
@@ -431,6 +432,7 @@ def get_flag_flipt_redis_async(flag, flipt_url, redis_instance):
 
         # Check if an exception occurred
         if (threaded_exception):
+            do_logging("threaded exception")
             raise RuntimeError
 
         # Check redis thread
