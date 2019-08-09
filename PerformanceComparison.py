@@ -592,6 +592,7 @@ def refresh_connections():
             success = True 
         except Exception as e:
             do_logging('Exception during refresh: {}'.format(e))
+            time.sleep(5)
 
 # Database instanciation
 refresh_connections()
@@ -611,7 +612,7 @@ data = np.zeros((num_redis_percents, num_approaches))
 
 # Iterate over various % in redis cache
 i = -1
-for redis_percent in np.linspace(0, 1, num_redis_percents):
+for redis_percent in np.linspace(1, 1, 1):
     i = i + 1
 
     # Iterate over which method/config is used
@@ -646,6 +647,7 @@ for redis_percent in np.linspace(0, 1, num_redis_percents):
                     success = True
                 except Exception as e:
                     do_logging('Exception during execution: {}'.format(e))
+                    time.sleep(5)
                     refresh_connections()
 
         # Done with this method-percent combo

@@ -2,3 +2,4 @@
 dump.rdb
 output.csv
 log.txt
+bad\ log.txt
